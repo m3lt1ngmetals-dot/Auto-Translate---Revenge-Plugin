@@ -1,0 +1,7 @@
+{
+  "name": "Auto Translate",
+  "version": "1.0.0",
+  "main": "AutoTranslate.plugin.js",
+  "author": "notttkarma.",
+  "description": "Auto translation plugin for Revenge"
+}

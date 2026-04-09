@@ -1,105 +1,26 @@
 /**
  * @name AutoTranslate
- * @description Automatically translates messages inline with settings
- * @version 1.1.0
+ * @author notttkarma.
+ * @version 1.3.0
+ * @description Auto detects and translates messages (now includes Russian)
  */
-
-const { franc } = require("franc");
-const translate = require("@vitalets/google-translate-api");
 
 module.exports = class AutoTranslate {
   constructor() {
-    this.defaultSettings = {
+    this.settings = {
       enabled: true,
       targetLang: "en",
-      ignoreShort: true,
-      minLength: 3
+      autoDetect: true
     };
-
-    this.settings = this.loadSettings();
   }
-
-  // ================= SETTINGS =================
-
-  loadSettings() {
-    const saved = localStorage.getItem("autoTranslateSettings");
-    return saved ? { ...this.defaultSettings, ...JSON.parse(saved) } : this.defaultSettings;
-  }
-
-  saveSettings() {
-    localStorage.setItem("autoTranslateSettings", JSON.stringify(this.settings));
-  }
-
-  getSettingsPanel() {
-    const panel = document.createElement("div");
-
-    panel.innerHTML = `
-      <h2>🌍 Auto Translate Settings</h2>
-
-      <label>
-        <input type="checkbox" id="enabled" ${this.settings.enabled ? "checked" : ""}/>
-        Enable Auto Translate
-      </label>
-      <br/><br/>
-
-      <label>Target Language:</label>
-      <select id="lang">
-        <option value="en">English</option>
-        <option value="es">Spanish</option>
-        <option value="fr">French</option>
-        <option value="de">German</option>
-      </select>
-      <br/><br/>
-
-      <label>
-        <input type="checkbox" id="ignoreShort" ${this.settings.ignoreShort ? "checked" : ""}/>
-        Ignore Short Messages
-      </label>
-      <br/><br/>
-
-      <label>Minimum Length:</label>
-      <input type="number" id="minLength" value="${this.settings.minLength}" min="1" max="20"/>
-    `;
-
-    setTimeout(() => {
-      panel.querySelector("#lang").value = this.settings.targetLang;
-
-      panel.querySelector("#enabled").onchange = (e) => {
-        this.settings.enabled = e.target.checked;
-        this.saveSettings();
-      };
-
-      panel.querySelector("#lang").onchange = (e) => {
-        this.settings.targetLang = e.target.value;
-        this.saveSettings();
-      };
-
-      panel.querySelector("#ignoreShort").onchange = (e) => {
-        this.settings.ignoreShort = e.target.checked;
-        this.saveSettings();
-      };
-
-      panel.querySelector("#minLength").onchange = (e) => {
-        this.settings.minLength = Number(e.target.value);
-        this.saveSettings();
-      };
-
-    }, 0);
-
-    return panel;
-  }
-
-  // ================= CORE =================
 
   start() {
-    this.processNode = this.processNode.bind(this);
-
-    this.observer = new MutationObserver((mutations) => {
+    this.observer = new MutationObserver(mutations => {
       if (!this.settings.enabled) return;
 
-      for (const mutation of mutations) {
-        for (const node of mutation.addedNodes) {
-          this.processNode(node);
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          this.process(node);
         }
       }
     });
@@ -110,22 +31,24 @@ module.exports = class AutoTranslate {
     });
   }
 
-  async processNode(node) {
+  stop() {
+    if (this.observer) this.observer.disconnect();
+  }
+
+  async process(node) {
     try {
       if (!node || !node.innerText) return;
 
       const text = node.innerText;
+      if (text.length < 3) return;
 
-      if (this.settings.ignoreShort && text.length < this.settings.minLength) return;
-      if (text.startsWith("http")) return;
+      const detected = this.detectLang(text);
+      const target = this.settings.targetLang;
 
-      const detected = franc(text);
+      if (!detected || detected === target) return;
 
-      if (detected === "und" || detected.startsWith(this.settings.targetLang)) return;
-
-      const res = await translate(text, { to: this.settings.targetLang });
-
-      if (!res || !res.text) return;
+      const translated = await this.translate(text, target);
+      if (!translated) return;
 
       if (node.querySelector(".auto-translate")) return;
 
@@ -133,17 +56,45 @@ module.exports = class AutoTranslate {
       div.className = "auto-translate";
       div.style.opacity = "0.7";
       div.style.fontSize = "12px";
-      div.style.marginTop = "4px";
-      div.innerText = "🌐 " + res.text;
+      div.innerText = "🌐 " + translated;
 
       node.appendChild(div);
 
-    } catch (err) {
-      console.error("AutoTranslate error:", err);
+    } catch (e) {
+      console.error(e);
     }
   }
 
-  stop() {
-    if (this.observer) this.observer.disconnect();
+  // 🌍 Language Detection (UPDATED)
+  detectLang(text) {
+    // Russian (Cyrillic)
+    if (/[а-яА-ЯЁё]/.test(text)) return "ru";
+
+    // Spanish
+    if (/[¿¡ñ]/.test(text)) return "es";
+
+    // French
+    if (/[éèà]/.test(text)) return "fr";
+
+    // German
+    if (/[ß]/.test(text)) return "de";
+
+    // Default English
+    if (/^[a-zA-Z\s]+$/.test(text)) return "en";
+
+    return null;
+  }
+
+  async translate(text, to) {
+    try {
+      const res = await fetch(
+        `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${to}&dt=t&q=${encodeURIComponent(text)}`
+      );
+
+      const data = await res.json();
+      return data[0].map(x => x[0]).join("");
+    } catch {
+      return null;
+    }
   }
 };

@@ -1,0 +1,11 @@
+{
+  "name": "auto-translate-plugin",
+  "version": "1.0.0",
+  "description": "Auto translating plugin concept",
+  "main": "src/AutoTranslate.plugin.js",
+  "license": "MIT",
+  "dependencies": {
+    "franc": "^6.1.0",
+    "@vitalets/google-translate-api": "^9.0.0"
+  }
+}
